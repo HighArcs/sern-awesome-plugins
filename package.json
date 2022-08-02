@@ -26,5 +26,9 @@
 		"@babel/cli": "^7.18.9",
 		"@babel/core": "^7.18.9",
 		"@babel/preset-typescript": "^7.18.6"
+	},
+	"dependencies": {
+		"@sern/handler": "^1.1.7-beta",
+		"discord.js": "^14.1.2"
 	}
 }
