@@ -4,8 +4,6 @@
  * @description checks if a command can be ran based off of criteria
  * @license null
  *
- **/
-/**
  * @example
  * ```ts
  * import { filter } from "../plugins/filter";
@@ -16,7 +14,7 @@
  * })
  * ```
  */
-let filter: Readonly<typeof Filter & typeof loader> = null as never;
+
 import { CommandType, EventPlugin, PluginType } from "@sern/handler";
 import {
 	Message,
@@ -31,7 +29,7 @@ export interface Criteria {
 	execute: Test;
 	children: Array<Criteria>;
 }
-export class Filter {
+export class filter {
 	public readonly criteria: Criteria;
 	public readonly test: Test;
 	public message?: string;
@@ -42,7 +40,7 @@ export class Filter {
 	}
 
 	// logic ops
-	static or(...filters: Array<Filter>) {
+	static or(...filters: Array<filter>) {
 		function execute(message: Message) {
 			for (const filter of filters) {
 				if (filter.test(message)) {
@@ -60,7 +58,7 @@ export class Filter {
 		);
 	}
 
-	static and(...filters: Array<Filter>) {
+	static and(...filters: Array<filter>) {
 		function execute(message: Message) {
 			for (const filter of filters) {
 				if (!filter.test(message)) {
@@ -78,7 +76,7 @@ export class Filter {
 		);
 	}
 
-	static not(filter: Filter) {
+	static not(filter: filter) {
 		function execute(message: Message) {
 			return !filter.test(message);
 		}
@@ -104,12 +102,12 @@ export class Filter {
 		);
 	}
 
-	static withCustomMessage(filter: Filter, message?: string) {
+	static withCustomMessage(filter: filter, message?: string) {
 		filter.message = message;
 		return filter;
 	}
 
-	static silent(filter: Filter) {
+	static silent(filter: filter) {
 		return this.withCustomMessage(filter, undefined);
 	}
 
@@ -118,7 +116,7 @@ export class Filter {
 	static hasGuildPermission(permission: PermissionResolvable) {
 		const bigint = PermissionsBitField.resolve(permission);
 		const field = Object.entries(PermissionsBitField.Flags).find(
-			([k, v]) => v === bigint
+			([, v]) => v === bigint
 		)!;
 		if (!field) {
 			throw new Error(`Unknown permission: ${permission}`);
@@ -128,7 +126,7 @@ export class Filter {
 
 		return new this(
 			{
-				name: "has channel permission",
+				name: "hasGuildPermission",
 				execute: (message) => {
 					return (
 						message.member! &&
@@ -137,7 +135,7 @@ export class Filter {
 				},
 				children: [],
 			},
-			`has guild permission: ${name}`
+			`has permission: ${name}`
 		);
 	}
 
@@ -147,7 +145,7 @@ export class Filter {
 	) {
 		const bigint = PermissionsBitField.resolve(permission);
 		const field = Object.entries(PermissionsBitField.Flags).find(
-			([k, v]) => v === bigint
+			([, v]) => v === bigint
 		)!;
 		if (!field) {
 			throw new Error(`Unknown permission: ${permission}`);
@@ -173,7 +171,9 @@ export class Filter {
 				},
 				children: [],
 			},
-			`has channel permission: ${name} in ${channelId}`
+			channelId
+				? `has channel permission: ${name} in ${channelId}`
+				: `has permission: ${name}`
 		);
 	}
 
@@ -474,11 +474,17 @@ export class Filter {
 	}
 
 	static parentIdIn(parentIds: Array<string>) {
-		return this.or(...parentIds.map((v) => this.hasParentId(v)));
+		return this.withCustomMessage(
+			this.or(...parentIds.map((v) => this.hasParentId(v))),
+			`parent is one of: ${parentIds.map((v) => `<#${v}>`).join(", ")}`
+		);
 	}
 
 	static userIdIn(userIds: Array<string>) {
-		return this.or(...userIds.map((v) => this.isUserId(v)));
+		return this.withCustomMessage(
+			this.or(...userIds.map((v) => this.isUserId(v))),
+			`user is one of: ${userIds.map((v) => `<@${v}>`).join(", ")}`
+		);
 	}
 
 	static isInGuild() {
@@ -497,32 +503,34 @@ export class Filter {
 	static isInDm() {
 		return this.withCustomMessage(this.not(this.isInGuild()), "is in dm");
 	}
+
+	static make(...filters: Array<filter>): EventPlugin<CommandType.Both> {
+		const self = this;
+		return {
+			name: "filter",
+			type: PluginType.Event,
+			description: "filters a message based on criteria",
+			async execute(event, controller) {
+				const [ctx] = event;
+
+				const value = self.and(...filters).test(ctx.message);
+
+				if (value) {
+					return controller.next();
+				}
+
+				await ctx.reply({
+					ephemeral: true,
+					content: `you do not match the criteria for this command:\n${filters
+						.map((x) => x.message)
+						.filter(Boolean)
+						.join("\n")}`,
+
+					allowedMentions: { repliedUser: false, parse: [] },
+				});
+
+				return controller.stop();
+			},
+		};
+	}
 }
-function loader(...filters: Array<Filter>): EventPlugin<CommandType.Both> {
-	return {
-		name: "filter",
-		type: PluginType.Event,
-		description: "filters a message based on criteria",
-		async execute(event, controller) {
-			const [ctx] = event;
-
-			const value = Filter.and(...filters).test(ctx.message);
-
-			if (value) {
-				return controller.next();
-			}
-
-			await ctx.reply({
-				ephemeral: true,
-				content: `you do not match the criteria for this command: ${filters
-					.map((x) => x.message)
-					.filter(Boolean)
-					.join("\n")}`,
-			});
-
-			return controller.stop();
-		},
-	};
-}
-filter = Object.freeze(Object.assign({}, Filter, loader));
-export { filter };
