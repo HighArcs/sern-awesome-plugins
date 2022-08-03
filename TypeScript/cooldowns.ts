@@ -3,20 +3,18 @@
  * @version 1.0.0
  * @description allows you to set cooldowns (or "ratelimits") for commands
  * @license null
- *
- **/
-/**
+ 
  * @example
  * ```ts
  * import { cooldown } from "../plugins/cooldown";
  * import { sernModule, CommandType } from "@sern/handler";
  * export default commandModule({
- *   plugins: [cooldown(['channel', '1/4'])], // limit to 1 action every 4 seconds per channel
+ *   plugins: [cooldown.add(['channel', '1/4'])], // limit to 1 action every 4 seconds per channel
  *   execute: (ctx) => {}
  * })
  * ```
  */
-let cooldown: typeof applyCooldown & typeof locations = null as never;
+
 import { CommandType, Context, EventPlugin, PluginType } from "@sern/handler";
 import { GuildMember } from "discord.js";
 /**
@@ -51,7 +49,7 @@ export class ExpiryMap<K, V> extends Map<K, V> {
 	}
 }
 
-export const cooldowns = new ExpiryMap<string, number>();
+export const map = new ExpiryMap<string, number>();
 
 function parseCooldown(
 	location: CooldownLocation,
@@ -59,7 +57,12 @@ function parseCooldown(
 ): Cooldown {
 	const [actions, seconds] = cooldown.split("/").map((s) => Number(s));
 
-	if (!Number.isSafeInteger(actions) || !Number.isSafeInteger(seconds)) {
+	if (
+		!Number.isSafeInteger(actions) ||
+		!Number.isSafeInteger(seconds) ||
+		actions === undefined ||
+		seconds === undefined
+	) {
 		throw new Error(`Invalid cooldown string: ${cooldown}`);
 	}
 
@@ -89,31 +92,34 @@ export interface RecievedCooldown {
 	actions: number;
 	maxActions: number;
 	seconds: number;
+	context: Context;
 }
 type CooldownResponse = (cooldown: RecievedCooldown) => any;
 
-function applyCooldown(
+function add(
 	items: Array<
-		[CooldownLocation | keyof CooldownLocation, CooldownString] | Cooldown
+		| [CooldownLocation | keyof typeof CooldownLocation, CooldownString]
+		| Cooldown
 	>,
 	message?: CooldownResponse
 ): EventPlugin<CommandType.Both> {
-	const raw = items.map((c) =>
-		typeof c === "string" ? parseCooldown(CooldownLocation.guild, c) : c
-	) as Array<Cooldown>;
+	const raw = items.map((c) => {
+		if (!Array.isArray(c)) return c;
+		return parseCooldown(c[0] as CooldownLocation, c[1]);
+	}) as Array<Cooldown>;
 
 	return {
 		name: "cooldown",
 		description: "limits user/channel/guild actions",
 		type: PluginType.Event,
-		async execute([context, args], controller) {
+		async execute([context], controller) {
 			for (const { location, actions, seconds } of raw) {
 				const id = getPropertyForLocation(context, location);
 
-				const cooldown = cooldowns.get(id);
+				const cooldown = map.get(id);
 
 				if (!cooldown) {
-					cooldowns.set(id, 1);
+					map.set(id, 1);
 					continue;
 				}
 
@@ -124,27 +130,31 @@ function applyCooldown(
 							actions: cooldown,
 							maxActions: actions,
 							seconds,
+							context,
 						});
 					}
 					return controller.stop();
 				}
 
-				cooldowns.set(id, cooldown + 1);
+				map.set(id, cooldown + 1);
 			}
 
 			return controller.next();
 		},
 	};
 }
-type PluginUse = (value: CooldownString) => EventPlugin<CommandType.Both>;
-const locations: Record<CooldownLocation, PluginUse> = {
-	channel: (value: CooldownString) =>
-		applyCooldown([[CooldownLocation.channel, value]]),
-	user: (value: CooldownString) =>
-		applyCooldown([[CooldownLocation.user, value]]),
-	guild: (value: CooldownString) =>
-		applyCooldown([[CooldownLocation.guild, value]]),
+
+type Location = (value: CooldownString) => ReturnType<typeof add>;
+
+const locations: Record<CooldownLocation, Location> = {
+	[CooldownLocation.channel]: (value) =>
+		add([[CooldownLocation.channel, value]]),
+	[CooldownLocation.user]: (value) => add([[CooldownLocation.user, value]]),
+	[CooldownLocation.guild]: (value) => add([[CooldownLocation.guild, value]]),
 };
 
-cooldown = Object.assign({}, locations, applyCooldown);
-export { cooldown };
+export const cooldown = {
+	add,
+	locations,
+	map,
+};
