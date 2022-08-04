@@ -1,3 +1,25 @@
+/**
+ * @author HighArcs
+ * @version 1.0.0
+ * @description converts array of argument strings to an object (and maps them)
+ * @license null
+ * @example
+ * ```ts
+ * import { parsedCommandModule, args } from "../plugins/args";
+ * import { CommandType } from "@sern/handler";
+ *
+ * interface Arg {
+ * 	 value: number;
+ * }
+ *
+ * export default parsedCommandModule({
+ *  plugins: [args({ value: Number })],
+ * 	execute: (ctx, args) => {
+ * 		console.log(ctx.args.value);
+ * 	}
+ * })
+ */
+
 import {
 	commandModule,
 	CommandType,
