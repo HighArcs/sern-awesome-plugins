@@ -29,6 +29,7 @@
 	},
 	"dependencies": {
 		"@sern/handler": "^1.1.7-beta",
-		"discord.js": "^14.1.2"
+		"discord.js": "^14.1.2",
+		"typescript": "^4.7.4"
 	}
 }
